@@ -1,7 +1,7 @@
 import os
 import logging
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -25,7 +25,7 @@ auto_responses = {}
 async def cmd_start(message: Message):
     await message.answer("Пахан Ткаченко жирный индус")
 
-@router.message(Command("automessage"))
+@router.message(F.text.startswith('.automessage'))
 async def set_auto_message(message: Message):
     parts = message.text.split(maxsplit=1)
     
@@ -43,7 +43,7 @@ async def set_auto_message(message: Message):
         auto_responses['all'] = auto_text
         await message.answer(f"Автоответ для всех установлен: {auto_text}")
 
-@router.message(Command("stopautomessage"))
+@router.message(F.text.startswith('.stopautomessage'))
 async def stop_auto_message(message: Message):
     if message.reply_to_message:
         target_user_id = message.reply_to_message.from_user.id
@@ -61,7 +61,7 @@ async def stop_auto_message(message: Message):
 
 @router.message()
 async def handle_messages(message: Message):
-    if message.text and not message.text.startswith('/'):
+    if message.text and not message.text.startswith('.'):
         if message.from_user.id in auto_responses:
             await message.answer(auto_responses[message.from_user.id])
         elif 'all' in auto_responses:
