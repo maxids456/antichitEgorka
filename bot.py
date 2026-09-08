@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import CommandStart, ChatTypeFilter
+from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -40,14 +40,16 @@ async def safe_send_message(message: Message, text: str, retries: int = 3):
             return False
     return False
 
-# Работает только в личных сообщениях
-@router.message(CommandStart(), ChatTypeFilter(chat_type="private"))
+@router.message(CommandStart())
 async def cmd_start(message: Message):
-    await safe_send_message(message, "Пахан Ткаченко жирный индус")
+    if message.chat.type == "private":
+        await safe_send_message(message, "Пахан Ткаченко жирный индус")
 
-# Команды только в личных сообщениях
-@router.message(F.text.startswith('.automessage'), ChatTypeFilter(chat_type="private"))
+@router.message(F.text.startswith('.automessage'))
 async def set_auto_message(message: Message):
+    if message.chat.type != "private":
+        return
+    
     parts = message.text.split(maxsplit=1)
     
     if len(parts) < 2:
@@ -59,8 +61,11 @@ async def set_auto_message(message: Message):
     auto_responses[user_id] = auto_text
     await safe_send_message(message, f"✅ Автоответ установлен: {auto_text}")
 
-@router.message(F.text.startswith('.stopautomessage'), ChatTypeFilter(chat_type="private"))
+@router.message(F.text.startswith('.stopautomessage'))
 async def stop_auto_message(message: Message):
+    if message.chat.type != "private":
+        return
+    
     user_id = message.from_user.id
     if user_id in auto_responses:
         del auto_responses[user_id]
@@ -68,18 +73,15 @@ async def stop_auto_message(message: Message):
     else:
         await safe_send_message(message, "❌ Автоответ не установлен")
 
-# Автоответ только в личных сообщениях
-@router.message(F.text, ChatTypeFilter(chat_type="private"))
-async def handle_private_messages(message: Message):
+@router.message(F.text)
+async def handle_messages(message: Message):
+    if message.chat.type != "private":
+        return
+    
     if not message.text.startswith('.'):
         user_id = message.from_user.id
         if user_id in auto_responses:
             await safe_send_message(message, auto_responses[user_id])
-
-# Игнорируем все сообщения из групп
-@router.message(ChatTypeFilter(chat_type=["group", "supergroup"]))
-async def ignore_groups(message: Message):
-    pass
 
 async def on_startup(bot: Bot) -> None:
     for attempt in range(5):
