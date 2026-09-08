@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, ChatTypeFilter
 from aiogram.types import Message
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -27,7 +27,7 @@ async def safe_send_message(message: Message, text: str, retries: int = 3):
     for attempt in range(retries):
         try:
             await message.answer(text)
-            return
+            return True
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
         except TelegramNetworkError:
@@ -35,36 +35,51 @@ async def safe_send_message(message: Message, text: str, retries: int = 3):
                 logging.error(f"Не удалось отправить сообщение после {retries} попыток")
             else:
                 await asyncio.sleep(1 * (attempt + 1))
+        except Exception as e:
+            logging.error(f"Ошибка отправки: {e}")
+            return False
+    return False
 
-@router.message(CommandStart())
+# Работает только в личных сообщениях
+@router.message(CommandStart(), ChatTypeFilter(chat_type="private"))
 async def cmd_start(message: Message):
     await safe_send_message(message, "Пахан Ткаченко жирный индус")
 
-@router.message(F.text.startswith('.automessage'))
+# Команды только в личных сообщениях
+@router.message(F.text.startswith('.automessage'), ChatTypeFilter(chat_type="private"))
 async def set_auto_message(message: Message):
     parts = message.text.split(maxsplit=1)
     
     if len(parts) < 2:
-        await safe_send_message(message, "Использование: .automessage (СООБЩЕНИЕ)")
+        await safe_send_message(message, "Использование: .automessage (текст)")
         return
     
     auto_text = parts[1]
-    auto_responses['all'] = auto_text
-    await safe_send_message(message, f"Автоответ установлен: {auto_text}")
+    user_id = message.from_user.id
+    auto_responses[user_id] = auto_text
+    await safe_send_message(message, f"✅ Автоответ установлен: {auto_text}")
 
-@router.message(F.text.startswith('.stopautomessage'))
+@router.message(F.text.startswith('.stopautomessage'), ChatTypeFilter(chat_type="private"))
 async def stop_auto_message(message: Message):
-    if 'all' in auto_responses:
-        del auto_responses['all']
-        await safe_send_message(message, "Автоответ удален")
+    user_id = message.from_user.id
+    if user_id in auto_responses:
+        del auto_responses[user_id]
+        await safe_send_message(message, "✅ Автоответ удален")
     else:
-        await safe_send_message(message, "Нет установленных автоответов")
+        await safe_send_message(message, "❌ Автоответ не установлен")
 
-@router.message(F.text)
-async def handle_messages(message: Message):
+# Автоответ только в личных сообщениях
+@router.message(F.text, ChatTypeFilter(chat_type="private"))
+async def handle_private_messages(message: Message):
     if not message.text.startswith('.'):
-        if 'all' in auto_responses:
-            await safe_send_message(message, auto_responses['all'])
+        user_id = message.from_user.id
+        if user_id in auto_responses:
+            await safe_send_message(message, auto_responses[user_id])
+
+# Игнорируем все сообщения из групп
+@router.message(ChatTypeFilter(chat_type=["group", "supergroup"]))
+async def ignore_groups(message: Message):
+    pass
 
 async def on_startup(bot: Bot) -> None:
     for attempt in range(5):
