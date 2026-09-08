@@ -5,7 +5,7 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message
 
 # Токен берём из переменной окружения BOT_TOKEN, либо вписываем напрямую
-TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
+TOKEN = os.getenv("BOT_TOKEN", "8937398865:AAGTzX4R11ZCHFq8FTDYdiqlk-G8C4fhfCc")
 
 # Создаём роутер для обработчиков
 router = Router()
