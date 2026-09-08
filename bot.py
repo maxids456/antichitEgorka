@@ -49,37 +49,21 @@ async def set_auto_message(message: Message):
         return
     
     auto_text = parts[1]
-    
-    if message.reply_to_message:
-        target_user_id = message.reply_to_message.from_user.id
-        auto_responses[target_user_id] = auto_text
-        await safe_send_message(message, f"Автоответ для пользователя {target_user_id} установлен: {auto_text}")
-    else:
-        auto_responses['all'] = auto_text
-        await safe_send_message(message, f"Автоответ для всех установлен: {auto_text}")
+    auto_responses['all'] = auto_text
+    await safe_send_message(message, f"Автоответ установлен: {auto_text}")
 
 @router.message(F.text.startswith('.stopautomessage'))
 async def stop_auto_message(message: Message):
-    if message.reply_to_message:
-        target_user_id = message.reply_to_message.from_user.id
-        if target_user_id in auto_responses:
-            del auto_responses[target_user_id]
-            await safe_send_message(message, f"Автоответ для пользователя {target_user_id} удален")
-        else:
-            await safe_send_message(message, "Для этого пользователя нет автоответа")
+    if 'all' in auto_responses:
+        del auto_responses['all']
+        await safe_send_message(message, "Автоответ удален")
     else:
-        if 'all' in auto_responses:
-            del auto_responses['all']
-            await safe_send_message(message, "Автоответ для всех удален")
-        else:
-            await safe_send_message(message, "Нет установленных автоответов")
+        await safe_send_message(message, "Нет установленных автоответов")
 
 @router.message(F.text)
 async def handle_messages(message: Message):
-    if not message.text.startswith('/'):
-        if message.from_user.id in auto_responses:
-            await safe_send_message(message, auto_responses[message.from_user.id])
-        elif 'all' in auto_responses:
+    if not message.text.startswith('.'):
+        if 'all' in auto_responses:
             await safe_send_message(message, auto_responses['all'])
 
 async def on_startup(bot: Bot) -> None:
