@@ -13,7 +13,7 @@ router = Router()
 # Обработчик команды /start
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer("привет")
+    await message.answer("тест ткаченко гей")
 
 async def main():
     bot = Bot(token=TOKEN)
