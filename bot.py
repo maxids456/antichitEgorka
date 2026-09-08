@@ -26,7 +26,7 @@ dp = Dispatcher()
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     # Бот просто пишет "Привет!" в ответ на старт
-    await message.answer("Привет! Бот успешно запущен на Render через Webhooks.")
+    await message.answer("Пахан Ткаченко жирный индус")
 
 # --- Функции запуска и остановки вебхука ---
 async def on_startup(bot: Bot) -> None:
