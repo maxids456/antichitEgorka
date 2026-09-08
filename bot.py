@@ -1,8 +1,10 @@
 import os
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
@@ -21,16 +23,29 @@ dp = Dispatcher()
 
 auto_responses = {}
 
+async def safe_send_message(message: Message, text: str, retries: int = 3):
+    for attempt in range(retries):
+        try:
+            await message.answer(text)
+            return
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except TelegramNetworkError:
+            if attempt == retries - 1:
+                logging.error(f"Не удалось отправить сообщение после {retries} попыток")
+            else:
+                await asyncio.sleep(1 * (attempt + 1))
+
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer("Пахан Ткаченко жирный индус")
+    await safe_send_message(message, "Пахан Ткаченко жирный индус")
 
 @router.message(F.text.startswith('.automessage'))
 async def set_auto_message(message: Message):
     parts = message.text.split(maxsplit=1)
     
     if len(parts) < 2:
-        await message.answer("Использование: .automessage (СООБЩЕНИЕ)")
+        await safe_send_message(message, "Использование: .automessage (СООБЩЕНИЕ)")
         return
     
     auto_text = parts[1]
@@ -38,10 +53,10 @@ async def set_auto_message(message: Message):
     if message.reply_to_message:
         target_user_id = message.reply_to_message.from_user.id
         auto_responses[target_user_id] = auto_text
-        await message.answer(f"Автоответ для пользователя {target_user_id} установлен: {auto_text}")
+        await safe_send_message(message, f"Автоответ для пользователя {target_user_id} установлен: {auto_text}")
     else:
         auto_responses['all'] = auto_text
-        await message.answer(f"Автоответ для всех установлен: {auto_text}")
+        await safe_send_message(message, f"Автоответ для всех установлен: {auto_text}")
 
 @router.message(F.text.startswith('.stopautomessage'))
 async def stop_auto_message(message: Message):
@@ -49,30 +64,41 @@ async def stop_auto_message(message: Message):
         target_user_id = message.reply_to_message.from_user.id
         if target_user_id in auto_responses:
             del auto_responses[target_user_id]
-            await message.answer(f"Автоответ для пользователя {target_user_id} удален")
+            await safe_send_message(message, f"Автоответ для пользователя {target_user_id} удален")
         else:
-            await message.answer("Для этого пользователя нет автоответа")
+            await safe_send_message(message, "Для этого пользователя нет автоответа")
     else:
         if 'all' in auto_responses:
             del auto_responses['all']
-            await message.answer("Автоответ для всех удален")
+            await safe_send_message(message, "Автоответ для всех удален")
         else:
-            await message.answer("Нет установленных автоответов")
+            await safe_send_message(message, "Нет установленных автоответов")
 
-@router.message()
+@router.message(F.text)
 async def handle_messages(message: Message):
-    if message.text and not message.text.startswith('.'):
+    if not message.text.startswith('/'):
         if message.from_user.id in auto_responses:
-            await message.answer(auto_responses[message.from_user.id])
+            await safe_send_message(message, auto_responses[message.from_user.id])
         elif 'all' in auto_responses:
-            await message.answer(auto_responses['all'])
+            await safe_send_message(message, auto_responses['all'])
 
 async def on_startup(bot: Bot) -> None:
-    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
-    logging.info(f"Вебхук успешно установлен на адрес: {WEBHOOK_URL}{WEBHOOK_PATH}")
+    for attempt in range(5):
+        try:
+            await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
+            logging.info(f"Вебхук успешно установлен на адрес: {WEBHOOK_URL}{WEBHOOK_PATH}")
+            break
+        except TelegramNetworkError:
+            if attempt == 4:
+                logging.error("Не удалось установить вебхук после 5 попыток")
+            else:
+                await asyncio.sleep(2 * (attempt + 1))
 
 async def on_shutdown(bot: Bot) -> None:
-    await bot.delete_webhook()
+    try:
+        await bot.delete_webhook()
+    except:
+        pass
     await bot.session.close()
 
 def main():
