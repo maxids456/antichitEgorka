@@ -1,9 +1,9 @@
 import os
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher, Router, F
+from aiogram import Bot, Dispatcher, Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, BusinessConnection
+from aiogram.types import Message
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -21,92 +21,12 @@ router = Router()
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-@router.business_connection()
-async def business_connection_handler(business_connection: BusinessConnection):
-    if business_connection.is_enabled:
-        logging.info(f"Бот подключен к бизнес-аккаунту: {business_connection.user_id}")
-    else:
-        logging.info(f"Бот отключен от бизнес-аккаунта: {business_connection.user_id}")
-
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     try:
         await message.answer("Пахан Ткачонко жирный индус")
     except Exception as e:
         logging.error(f"Ошибка отправки: {e}")
-
-@router.message(F.text.startswith('.spam'))
-async def spam_handler(message: Message):
-    if message.chat.type != "private":
-        return
-    
-    parts = message.text.split(maxsplit=2)
-    
-    if len(parts) < 3:
-        await message.answer("Использование: .spam (количество) (текст)")
-        return
-    
-    try:
-        count = int(parts[1])
-    except ValueError:
-        await message.answer("Количество должно быть числом")
-        return
-    
-    spam_text = parts[2]
-    
-    if count > 20:
-        await message.answer("Максимум 20 сообщений за раз")
-        return
-    
-    if count < 1:
-        await message.answer("Количество должно быть больше 0")
-        return
-    
-    await message.answer(f"Начинаю спам: {count} сообщений")
-    
-    for i in range(count):
-        try:
-            await message.answer(spam_text)
-            await asyncio.sleep(0.1)
-        except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-        except Exception as e:
-            logging.error(f"Ошибка отправки спама: {e}")
-            break
-
-@router.message(F.business_connection_id.is_not(None))
-async def business_message_handler(message: Message):
-    if message.text:
-        if message.text.startswith('/start'):
-            await message.answer("Бизнес-бот запущен!")
-        elif message.text.startswith('.spam'):
-            parts = message.text.split(maxsplit=2)
-            
-            if len(parts) < 3:
-                await message.answer("Использование: .spam (количество) (текст)")
-                return
-            
-            try:
-                count = int(parts[1])
-            except ValueError:
-                await message.answer("Количество должно быть числом")
-                return
-            
-            spam_text = parts[2]
-            
-            if count > 10:
-                await message.answer("Максимум 10 сообщений в бизнес-чате")
-                return
-            
-            for i in range(count):
-                try:
-                    await message.answer(spam_text)
-                    await asyncio.sleep(0.1)
-                except Exception as e:
-                    logging.error(f"Ошибка отправки: {e}")
-                    break
-        else:
-            await message.answer(f"Получено бизнес-сообщение: {message.text}")
 
 async def set_webhook_with_retry(bot: Bot, url: str, max_retries: int = 5):
     for attempt in range(max_retries):
