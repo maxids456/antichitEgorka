@@ -1,53 +1,70 @@
 import os
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-# --- Конфигурация из переменных окружения Render ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Например: https://onrender.com
-WEBHOOK_PATH = "/webhook"               # Путь для вебхука
-WEBAPP_HOST = "0.0.0.0"                 # Слушаем все интерфейсы
-WEBAPP_PORT = int(os.getenv("PORT", 8443))  # Порт, который мы указали (8443)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_PATH = "/webhook"
+WEBAPP_HOST = "0.0.0.0"
+WEBAPP_PORT = int(os.getenv("PORT", 8443))
 
-# Проверка, что вы не забыли указать переменные на Render
 if not BOT_TOKEN or not WEBHOOK_URL:
     raise ValueError("ОШИБКА: Задайте BOT_TOKEN и WEBHOOK_URL в панели Environment на Render!")
 
-# Инициализация бота и диспетчера
 router = Router()
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- Обработчик команды /start ---
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    # Бот просто пишет "Привет!" в ответ на старт
-    await message.answer("Пахан Ткачонко жирный индус")
+    try:
+        await message.answer("Пахан Ткачонко жирный индус")
+    except Exception as e:
+        logging.error(f"Ошибка отправки: {e}")
 
-# --- Функции запуска и остановки вебхука ---
+async def set_webhook_with_retry(bot: Bot, url: str, max_retries: int = 5):
+    for attempt in range(max_retries):
+        try:
+            await bot.set_webhook(url)
+            logging.info(f"Вебхук установлен: {url}")
+            return True
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except TelegramNetworkError as e:
+            logging.warning(f"Попытка {attempt + 1} не удалась: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+        except Exception as e:
+            logging.error(f"Неожиданная ошибка: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+    return False
+
 async def on_startup(bot: Bot) -> None:
-    # Регистрируем вебхук в самом Telegram
-    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
-    logging.info(f"Вебхук успешно установлен на адрес: {WEBHOOK_URL}{WEBHOOK_PATH}")
+    webhook_url = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
+    success = await set_webhook_with_retry(bot, webhook_url)
+    if not success:
+        logging.error("Не удалось установить вебхук после всех попыток")
 
 async def on_shutdown(bot: Bot) -> None:
-    # Удаляем вебхук при выключении сервера
-    await bot.delete_webhook()
-    await bot.session.close()
+    try:
+        await bot.delete_webhook()
+    except Exception as e:
+        logging.error(f"Ошибка при удалении вебхука: {e}")
+    finally:
+        await bot.session.close()
 
 def main():
-    # Включаем наш обработчик команд
     dp.include_router(router)
-
-    # Привязываем функции к событиям старта и остановки
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # Настраиваем веб-сервер aiohttp
     app = web.Application()
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
@@ -56,10 +73,8 @@ def main():
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
 
-    # Запускаем сервер
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
 
 if __name__ == "__main__":
-    # Включаем логирование, чтобы видеть ошибки в панели Render
     logging.basicConfig(level=logging.INFO)
     main()
