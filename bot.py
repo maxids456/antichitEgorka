@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
@@ -27,6 +27,45 @@ async def cmd_start(message: Message):
         await message.answer("Пахан Ткачонко жирный индус")
     except Exception as e:
         logging.error(f"Ошибка отправки: {e}")
+
+@router.message(F.text.startswith('.spam'))
+async def spam_handler(message: Message):
+    if message.chat.type != "private":
+        return
+    
+    parts = message.text.split(maxsplit=2)
+    
+    if len(parts) < 3:
+        await message.answer("Использование: .spam (количество) (текст)")
+        return
+    
+    try:
+        count = int(parts[1])
+    except ValueError:
+        await message.answer("Количество должно быть числом")
+        return
+    
+    spam_text = parts[2]
+    
+    if count > 20:
+        await message.answer("Максимум 20 сообщений за раз")
+        return
+    
+    if count < 1:
+        await message.answer("Количество должно быть больше 0")
+        return
+    
+    await message.answer(f"Начинаю спам: {count} сообщений")
+    
+    for i in range(count):
+        try:
+            await message.answer(spam_text)
+            await asyncio.sleep(0.1)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except Exception as e:
+            logging.error(f"Ошибка отправки спама: {e}")
+            break
 
 async def set_webhook_with_retry(bot: Bot, url: str, max_retries: int = 5):
     for attempt in range(max_retries):
